@@ -30,6 +30,70 @@ def generate_truthful_report_variables(data):
 
 data = generate_truthful_report_variables(data)
 
+def generate_weak_truthful_report_variables(data):
+    """Generate true_report_r1 to true_report_r20 variables."""
+    print("Generating weak truthful report variables...")
+
+    for round_num in range(1, 11):
+        # Check xy comparison - wrong if preferences are directly opposite
+        xy_correct = ~(
+                ((data['preference_1_xy'] == 'X is better') & (
+                            data[f'mechanisms_p{round_num}playerxy'] == 'Y is better')) |
+                ((data['preference_1_xy'] == 'Y is better') & (
+                            data[f'mechanisms_p{round_num}playerxy'] == 'X is better'))
+        )
+
+        # Check xz comparison - wrong if preferences are directly opposite
+        xz_correct = ~(
+                ((data['preference_1_xz'] == 'X is better') & (
+                            data[f'mechanisms_p{round_num}playerxz'] == 'Z is better')) |
+                ((data['preference_1_xz'] == 'Z is better') & (
+                            data[f'mechanisms_p{round_num}playerxz'] == 'X is better'))
+        )
+
+        # Check yz comparison - wrong if preferences are directly opposite
+        yz_correct = ~(
+                ((data['preference_1_yz'] == 'Y is better') & (
+                            data[f'mechanisms_p{round_num}playeryz'] == 'Z is better')) |
+                ((data['preference_1_yz'] == 'Z is better') & (
+                            data[f'mechanisms_p{round_num}playeryz'] == 'Y is better'))
+        )
+
+        # All three comparisons must be correct for a true report
+        data[f'weak_true_report_r{round_num}'] = (xy_correct & xz_correct & yz_correct).astype(int)
+
+    for round_num in range(11, 21):
+        # Check xy comparison - wrong if preferences are directly opposite
+        xy_correct = ~(
+                ((data['preference_2_xy'] == 'X is better') & (
+                            data[f'mechanisms_p{round_num}playerxy'] == 'Y is better')) |
+                ((data['preference_2_xy'] == 'Y is better') & (
+                            data[f'mechanisms_p{round_num}playerxy'] == 'X is better'))
+        )
+
+        # Check xz comparison - wrong if preferences are directly opposite
+        xz_correct = ~(
+                ((data['preference_2_xz'] == 'X is better') & (
+                            data[f'mechanisms_p{round_num}playerxz'] == 'Z is better')) |
+                ((data['preference_2_xz'] == 'Z is better') & (
+                            data[f'mechanisms_p{round_num}playerxz'] == 'X is better'))
+        )
+
+        # Check yz comparison - wrong if preferences are directly opposite
+        yz_correct = ~(
+                ((data['preference_2_yz'] == 'Y is better') & (
+                            data[f'mechanisms_p{round_num}playeryz'] == 'Z is better')) |
+                ((data['preference_2_yz'] == 'Z is better') & (
+                            data[f'mechanisms_p{round_num}playeryz'] == 'Y is better'))
+        )
+
+        # All three comparisons must be correct for a true report
+        data[f'weak_true_report_r{round_num}'] = (xy_correct & xz_correct & yz_correct).astype(int)
+
+    return data
+
+data = generate_weak_truthful_report_variables(data)
+
 def generate_subsample_2truth_variables(data):
     """Generate subsample_2truth_r1 to subsample_2truth_r20 variables."""
     print("Generating subsample 2-truth variables...")

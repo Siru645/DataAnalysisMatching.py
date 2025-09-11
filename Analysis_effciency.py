@@ -745,6 +745,196 @@ def round_by_round_analysis(data, variable_prefix, preference_type="all", rounds
         print("No data available for round-by-round analysis.")
         return None
 
+
+def subject_level_aggregation_analysis(data, variable_prefix, preference_type="all", rounds_range="11-20",
+                                  condition_name="All", subsample_filter=False):
+    """
+    Perform subject-level aggregation analysis for specified rounds and preference type.
+    """
+    subsample_suffix = " (Subsample: ≥2 Truthful)" if subsample_filter else ""
+    print(
+        f"\n--- SUBJECT-LEVEL AGGREGATION ANALYSIS (ROUNDS {rounds_range}) - {condition_name.upper()}{subsample_suffix} ---")
+
+    # Determine round range
+    if rounds_range == "11-20":
+        round_start, round_end = 11, 21
+    elif rounds_range == "1-10":
+        round_start, round_end = 1, 11
+    else:
+        round_start, round_end = 1, 21
+
+    # Get unique subjects
+    subjects = data['participant_code'].unique() if 'participant_code' in data.columns else data.index.unique()
+
+    subject_rates = []
+
+    for subject in subjects:
+        subject_data = data[data['participant_code'] == subject] if 'participant_code' in data.columns else data.loc[[subject]]
+
+        if len(subject_data) == 0:
+            continue
+
+        # Get treatment for this subject
+        treatment = subject_data['treatment'].iloc[0]
+
+        # Apply preference type filtering
+        include_subject = True
+        if preference_type == "incomplete":
+            if rounds_range == "1-10":
+                include_subject = subject_data['incomplete_1'].iloc[0] == 1
+            elif rounds_range == "11-20":
+                include_subject = subject_data['incomplete_2'].iloc[0] == 1
+            else:  # rounds_range == "1-20"
+                include_subject = (subject_data['incomplete_1'].iloc[0] == 1) or (
+                            subject_data['incomplete_2'].iloc[0] == 1)
+        elif preference_type == "complete":
+            if rounds_range == "1-10":
+                include_subject = subject_data['incomplete_1'].iloc[0] == 0
+            elif rounds_range == "11-20":
+                include_subject = subject_data['incomplete_2'].iloc[0] == 0
+            else:  # rounds_range == "1-20"
+                include_subject = (subject_data['incomplete_1'].iloc[0] == 0) or (
+                            subject_data['incomplete_2'].iloc[0] == 0)
+        elif preference_type == "other":
+            if rounds_range == "1-10":
+                include_subject = subject_data['incomplete_1'].iloc[0] == 2
+            elif rounds_range == "11-20":
+                include_subject = subject_data['incomplete_2'].iloc[0] == 2
+            else:  # rounds_range == "1-20"
+                include_subject = (subject_data['incomplete_1'].iloc[0] == 2) or (
+                            subject_data['incomplete_2'].iloc[0] == 2)
+
+        if not include_subject:
+            continue
+
+        # Collect outcome data for this subject across specified rounds
+        subject_outcomes = []
+        valid_rounds = 0
+
+        for round_num in range(round_start, round_end):
+            # Apply subsample filter if requested
+            if subsample_filter:
+                subsample_col = f'subsample_2truth_r{round_num}'
+                if subsample_col in subject_data.columns:
+                    if subject_data[subsample_col].iloc[0] != 1:
+                        continue  # Skip this round for this subject
+
+            variable_col = f'{variable_prefix}_r{round_num}'
+            if variable_col in subject_data.columns:
+                value = subject_data[variable_col].iloc[0]
+                if pd.notna(value):
+                    subject_outcomes.append(value)
+                    valid_rounds += 1
+
+        # Calculate subject's rate (for binary outcomes) or mean (for continuous outcomes)
+        if valid_rounds > 0:
+            subject_rate = np.mean(subject_outcomes)
+            subject_rates.append({
+                'subject': subject,
+                'treatment': treatment,
+                'outcome_rate': subject_rate,
+                'valid_rounds': valid_rounds,
+                'total_positive': sum(subject_outcomes) if all(x in [0, 1] for x in subject_outcomes) else np.nan
+            })
+
+    if not subject_rates:
+        print("No valid data for subject-level analysis.")
+        return None
+
+    # Convert to DataFrame
+    subject_df = pd.DataFrame(subject_rates)
+
+    # Separate by treatment
+    da_rates = subject_df[subject_df['treatment'] == 'DA']['outcome_rate']
+    ttc_rates = subject_df[subject_df['treatment'] == 'TTC']['outcome_rate']
+
+    if len(da_rates) == 0 or len(ttc_rates) == 0:
+        print("Insufficient data: need subjects in both treatment groups.")
+        return None
+
+    # Summary statistics
+    print(f"\nSUMMARY STATISTICS:")
+    print(
+        f"DA  - N: {len(da_rates):3d}, Mean: {da_rates.mean():.4f}, Std: {da_rates.std(ddof=1):.4f}, Min: {da_rates.min():.4f}, Max: {da_rates.max():.4f}")
+    print(
+        f"TTC - N: {len(ttc_rates):3d}, Mean: {ttc_rates.mean():.4f}, Std: {ttc_rates.std(ddof=1):.4f}, Min: {ttc_rates.min():.4f}, Max: {ttc_rates.max():.4f}")
+
+    # Test for normality
+    from scipy.stats import shapiro
+    da_normal = shapiro(da_rates)[1] > 0.05 if len(da_rates) >= 3 else True
+    ttc_normal = shapiro(ttc_rates)[1] > 0.05 if len(ttc_rates) >= 3 else True
+
+    print(f"\nNORMALITY TESTS:")
+    print(f"DA normality (Shapiro-Wilk p > 0.05): {da_normal}")
+    print(f"TTC normality (Shapiro-Wilk p > 0.05): {ttc_normal}")
+
+    # Perform tests
+    print(f"\nSTATISTICAL TESTS:")
+
+    # 1. Welch's t-test (assumes normality, allows unequal variances)
+    t_stat, t_pval = stats.ttest_ind(da_rates, ttc_rates, equal_var=False)
+    print(f"Welch's t-test: t = {t_stat:.4f}, p = {t_pval:.4f}, significant = {'Yes' if t_pval < 0.05 else 'No'}")
+
+    # 2. Mann-Whitney U test (non-parametric)
+    u_stat, u_pval = stats.mannwhitneyu(da_rates, ttc_rates, alternative='two-sided')
+    print(f"Mann-Whitney U test: U = {u_stat:.4f}, p = {u_pval:.4f}, significant = {'Yes' if u_pval < 0.05 else 'No'}")
+
+    # 3. Effect size (Cohen's d)
+    pooled_std = np.sqrt(((len(da_rates) - 1) * da_rates.var(ddof=1) +
+                          (len(ttc_rates) - 1) * ttc_rates.var(ddof=1)) /
+                         (len(da_rates) + len(ttc_rates) - 2))
+    cohens_d = (da_rates.mean() - ttc_rates.mean()) / pooled_std if pooled_std > 0 else 0
+    print(f"Effect size (Cohen's d): {cohens_d:.4f}")
+
+    # Confidence intervals for means
+    da_ci = stats.t.interval(0.95, len(da_rates) - 1, loc=da_rates.mean(),
+                             scale=stats.sem(da_rates)) if len(da_rates) > 1 else (da_rates.mean(), da_rates.mean())
+    ttc_ci = stats.t.interval(0.95, len(ttc_rates) - 1, loc=ttc_rates.mean(),
+                              scale=stats.sem(ttc_rates)) if len(ttc_rates) > 1 else (
+    ttc_rates.mean(), ttc_rates.mean())
+
+    print(f"\nCONFIDENCE INTERVALS (95%):")
+    print(f"DA:  [{da_ci[0]:.4f}, {da_ci[1]:.4f}]")
+    print(f"TTC: [{ttc_ci[0]:.4f}, {ttc_ci[1]:.4f}]")
+
+    # Return results in same format as original pooled_analysis for compatibility
+    results = {
+        'condition': condition_name,
+        'rounds': rounds_range,
+        'da_n': len(da_rates),
+        'ttc_n': len(ttc_rates),
+        'da_mean': da_rates.mean(),
+        'ttc_mean': ttc_rates.mean(),
+        'da_std': da_rates.std(ddof=1),
+        'ttc_std': ttc_rates.std(ddof=1),
+        'da_ci_lower': da_ci[0],
+        'da_ci_upper': da_ci[1],
+        'ttc_ci_lower': ttc_ci[0],
+        'ttc_ci_upper': ttc_ci[1],
+        'welch_t_stat': t_stat,
+        'welch_p_value': t_pval,
+        'mannwhitney_u_stat': u_stat,
+        'mannwhitney_p_value': u_pval,
+        'cohens_d': cohens_d,
+        'da_normal': da_normal,
+        'ttc_normal': ttc_normal,
+        # Legacy fields for backward compatibility
+        't_stat': t_stat,
+        'p_value': t_pval,
+        'significant': t_pval < 0.05
+    }
+
+    # Save subject-level data
+    filename = f'subject_level_{variable_prefix}_{condition_name.lower().replace(" ", "_")}_{rounds_range.replace("-", "_")}'
+    if subsample_filter:
+        filename += '_subsample'
+    filename += '.csv'
+    subject_df.to_csv(filename, index=False)
+    print(f"\nSubject-level data saved to: {filename}")
+
+    return results, subject_df
+
+
 def analyze_efficiency_measure(data, variable_prefix, measure_name, preference_type="all", is_group_level=False,
                                subsample_filter=False):
     """Combined function for both pooled and round-by-round analysis."""
@@ -759,7 +949,7 @@ def analyze_efficiency_measure(data, variable_prefix, measure_name, preference_t
     round_results = round_by_round_analysis(data, variable_prefix, preference_type, "11-20", preference_type.title(),
                                             is_group_level, subsample_filter)
 
-    return pooled_results, round_results
+    return pooled_results
 
 
 def calculate_subsample_sizes(data):

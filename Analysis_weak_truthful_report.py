@@ -85,27 +85,67 @@ def analyze_earnings_by_group(data, group_col, group_name):
 # VARIABLE GENERATION FUNCTIONS
 ########################################################################################################################
 
-def generate_truthful_report_variables(data):
+def generate_weak_truthful_report_variables(data):
     """Generate true_report_r1 to true_report_r20 variables."""
-    print("Generating truthful report variables...")
+    print("Generating weak truthful report variables...")
 
     for round_num in range(1, 11):
-        data[f'true_report_r{round_num}'] = (
-                (data['preference_1_xy'] == data[f'mechanisms_p{round_num}playerxy']) &
-                (data['preference_1_xz'] == data[f'mechanisms_p{round_num}playerxz']) &
-                (data['preference_1_yz'] == data[f'mechanisms_p{round_num}playeryz'])
-        ).astype(int)
+        # Check xy comparison - wrong if preferences are directly opposite
+        xy_correct = ~(
+                ((data['preference_1_xy'] == 'X is better') & (
+                            data[f'mechanisms_p{round_num}playerxy'] == 'Y is better')) |
+                ((data['preference_1_xy'] == 'Y is better') & (
+                            data[f'mechanisms_p{round_num}playerxy'] == 'X is better'))
+        )
+
+        # Check xz comparison - wrong if preferences are directly opposite
+        xz_correct = ~(
+                ((data['preference_1_xz'] == 'X is better') & (
+                            data[f'mechanisms_p{round_num}playerxz'] == 'Z is better')) |
+                ((data['preference_1_xz'] == 'Z is better') & (
+                            data[f'mechanisms_p{round_num}playerxz'] == 'X is better'))
+        )
+
+        # Check yz comparison - wrong if preferences are directly opposite
+        yz_correct = ~(
+                ((data['preference_1_yz'] == 'Y is better') & (
+                            data[f'mechanisms_p{round_num}playeryz'] == 'Z is better')) |
+                ((data['preference_1_yz'] == 'Z is better') & (
+                            data[f'mechanisms_p{round_num}playeryz'] == 'Y is better'))
+        )
+
+        # All three comparisons must be correct for a true report
+        data[f'weak_true_report_r{round_num}'] = (xy_correct & xz_correct & yz_correct).astype(int)
 
     for round_num in range(11, 21):
-        data[f'true_report_r{round_num}'] = (
-                (data['preference_2_xy'] == data[f'mechanisms_p{round_num}playerxy']) &
-                (data['preference_2_xz'] == data[f'mechanisms_p{round_num}playerxz']) &
-                (data['preference_2_yz'] == data[f'mechanisms_p{round_num}playeryz'])
-        ).astype(int)
+        # Check xy comparison - wrong if preferences are directly opposite
+        xy_correct = ~(
+                ((data['preference_2_xy'] == 'X is better') & (
+                            data[f'mechanisms_p{round_num}playerxy'] == 'Y is better')) |
+                ((data['preference_2_xy'] == 'Y is better') & (
+                            data[f'mechanisms_p{round_num}playerxy'] == 'X is better'))
+        )
+
+        # Check xz comparison - wrong if preferences are directly opposite
+        xz_correct = ~(
+                ((data['preference_2_xz'] == 'X is better') & (
+                            data[f'mechanisms_p{round_num}playerxz'] == 'Z is better')) |
+                ((data['preference_2_xz'] == 'Z is better') & (
+                            data[f'mechanisms_p{round_num}playerxz'] == 'X is better'))
+        )
+
+        # Check yz comparison - wrong if preferences are directly opposite
+        yz_correct = ~(
+                ((data['preference_2_yz'] == 'Y is better') & (
+                            data[f'mechanisms_p{round_num}playeryz'] == 'Z is better')) |
+                ((data['preference_2_yz'] == 'Z is better') & (
+                            data[f'mechanisms_p{round_num}playeryz'] == 'Y is better'))
+        )
+
+        # All three comparisons must be correct for a true report
+        data[f'weak_true_report_r{round_num}'] = (xy_correct & xz_correct & yz_correct).astype(int)
 
     return data
-
-
 ########################################################################################################################
 # ANALYSIS FUNCTIONS
 ########################################################################################################################
@@ -390,30 +430,30 @@ analyze_earnings_by_group(data, 'treatment', 'Treatment')
 if 'incomplete_pref_pay' in data.columns:
     analyze_earnings_by_group(data, 'incomplete_pref_pay', 'Incomplete Preference Category')
 
-# 2. Generate truthful report variables
-data = generate_truthful_report_variables(data)
+# 2. Generate weak truthful report variables
+data = generate_weak_truthful_report_variables(data)
 
 # 3. Truthful report analysis
-print("\n2. TRUTHFUL REPORT ANALYSIS")
+print("\n2. WEAK TRUTHFUL REPORT ANALYSIS")
 
 # 3.1: All subjects
-rates_truth_all = calculate_rates_by_treatment(data, 'true_report', "all")
+rates_truth_all = calculate_rates_by_treatment(data, 'weak_true_report', "all")
 
 # Calculate sample sizes
 da_all_count = len(data[data['treatment'] == 'DA'])
 ttc_all_count = len(data[data['treatment'] == 'TTC'])
 
 plot_rates(rates_truth_all,
-           'True Report Rates by Treatment: All Subjects',
-           'true_report_rates_all_subjects.png',
+           'Weak True Report Rates by Treatment: All Subjects',
+           'weak_true_report_rates_all_subjects.png',
            'True Report Rate',
            {'rounds_1_10': f'n_TTC:{ttc_all_count}; n_DA:{da_all_count}',
             'rounds_11_20': f'n_TTC:{ttc_all_count}; n_DA:{da_all_count}'})
 
-analyze_truthful_report_measure(data, 'true_report', 'Truthful Report', 'all')
+analyze_truthful_report_measure(data, 'weak_true_report', 'Weak Truthful Report', 'all')
 
 # 3.2: Incomplete preferences
-rates_truth_incomplete = calculate_rates_by_treatment(data, 'true_report', "incomplete")
+rates_truth_incomplete = calculate_rates_by_treatment(data, 'weak_true_report', "incomplete")
 
 # Calculate sample sizes for incomplete preferences
 da_inc_1_10 = len(data[(data['treatment'] == 'DA') & (data['incomplete_1'] == 1)])
@@ -422,16 +462,16 @@ da_inc_11_20 = len(data[(data['treatment'] == 'DA') & (data['incomplete_2'] == 1
 ttc_inc_11_20 = len(data[(data['treatment'] == 'TTC') & (data['incomplete_2'] == 1)])
 
 plot_rates(rates_truth_incomplete,
-           'True Report Rates by Treatment: Incomplete Preferences',
-           'true_report_rates_incomplete_preferences.png',
+           'Weak True Report Rates by Treatment: Incomplete Preferences',
+           'weak_true_report_rates_incomplete_preferences.png',
            'True Report Rate',
            {'rounds_1_10': f'n_TTC:{ttc_inc_1_10}; n_DA:{da_inc_1_10}',
             'rounds_11_20': f'n_TTC:{ttc_inc_11_20}; n_DA:{da_inc_11_20}'})
 
-analyze_truthful_report_measure(data, 'true_report', 'Truthful Report', 'incomplete')
+analyze_truthful_report_measure(data, 'weak_true_report', 'Weak Truthful Report', 'incomplete')
 
 # 3.3: Complete preferences
-rates_truth_complete = calculate_rates_by_treatment(data, 'true_report', "complete")
+rates_truth_complete = calculate_rates_by_treatment(data, 'weak_true_report', "complete")
 
 # Calculate sample sizes for complete preferences
 da_comp_1_10 = len(data[(data['treatment'] == 'DA') & (data['incomplete_1'] == 0)])
@@ -440,16 +480,16 @@ da_comp_11_20 = len(data[(data['treatment'] == 'DA') & (data['incomplete_2'] == 
 ttc_comp_11_20 = len(data[(data['treatment'] == 'TTC') & (data['incomplete_2'] == 0)])
 
 plot_rates(rates_truth_complete,
-           'True Report Rates by Treatment: Complete Preferences',
-           'true_report_rates_complete_preferences.png',
+           'Weak True Report Rates by Treatment: Complete Preferences',
+           'weak_true_report_rates_complete_preferences.png',
            'True Report Rate',
            {'rounds_1_10': f'n_TTC:{ttc_comp_1_10}; n_DA:{da_comp_1_10}',
             'rounds_11_20': f'n_TTC:{ttc_comp_11_20}; n_DA:{da_comp_11_20}'})
 
-analyze_truthful_report_measure(data, 'true_report', 'Truthful Report', 'complete')
+analyze_truthful_report_measure(data, 'weak_true_report', 'Weak Truthful Report', 'complete')
 
 # 3.4: Other preferences
-rates_truth_other = calculate_rates_by_treatment(data, 'true_report', "other")
+rates_truth_other = calculate_rates_by_treatment(data, 'weak_true_report', "other")
 
 # Calculate sample sizes for other preferences
 da_other_1_10 = len(data[(data['treatment'] == 'DA') & (data['incomplete_1'] == 2)])
@@ -458,14 +498,14 @@ da_other_11_20 = len(data[(data['treatment'] == 'DA') & (data['incomplete_2'] ==
 ttc_other_11_20 = len(data[(data['treatment'] == 'TTC') & (data['incomplete_2'] == 2)])
 
 plot_rates(rates_truth_other,
-           'True Report Rates by Treatment: Other Preferences',
-           'true_report_rates_other_preferences.png',
+           'Weak True Report Rates by Treatment: Other Preferences',
+           'weak_true_report_rates_other_preferences.png',
            'True Report Rate',
            {'rounds_1_10': f'n_TTC:{ttc_other_1_10}; n_DA:{da_other_1_10}',
             'rounds_11_20': f'n_TTC:{ttc_other_11_20}; n_DA:{da_other_11_20}'})
 
-analyze_truthful_report_measure(data, 'true_report', 'Truthful Report', 'other')
+analyze_truthful_report_measure(data, 'weak_true_report', 'Weak Truthful Report', 'other')
 
 # Save the data
-data.to_csv('combined_with_truthful_report_analysis.csv', index=False)
-print("\nAnalysis complete. Data saved to 'combined_with_truthful_report_analysis.csv'")
+data.to_csv('combined_with_weak_truthful_report_analysis.csv', index=False)
+print("\nAnalysis complete. Data saved to 'combined_with_weak_truthful_report_analysis.csv'")
